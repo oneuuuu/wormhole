@@ -536,6 +536,7 @@ function broadcastMessage(message) {
         id: createMessageId(),
         from: currentUser.odId,
         nickname: currentUser.nickname,
+        email: currentUser.email || '',
         text: message.text,
         timestamp: Date.now()
     };

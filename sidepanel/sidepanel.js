@@ -251,8 +251,11 @@ function renderUserList() {
     for (const user of sortedUsers) {
         const userEl = document.createElement('div');
         userEl.className = `user-item ${user.isSelf ? 'self' : ''}`;
+        if (user.email) {
+            userEl.title = user.email;
+        }
         userEl.innerHTML = `
-      <div class="user-avatar">${user.nickname.charAt(0).toUpperCase()}</div>
+      <div class="user-avatar">${(user.nickname || 'U').charAt(0).toUpperCase()}</div>
       <span class="user-name">${escapeHtml(user.nickname)}${user.isSelf ? ' (you)' : ''}</span>
       <span class="user-status"></span>
     `;
@@ -343,9 +346,12 @@ function renderMessages() {
         } else {
             const el = document.createElement('div');
             el.className = `message ${msg.isSelf ? 'self' : 'other'}`;
+            const displayName = msg.nickname || 'Unknown';
+            const displayEmail = msg.email ? ` (${msg.email})` : '';
+
             el.innerHTML = `
-        <div class="message-header">
-          <span class="message-sender">${escapeHtml(msg.nickname || 'Unknown')}</span>
+        <div class="message-header" title="${msg.email || ''}">
+          <span class="message-sender">${escapeHtml(displayName)}</span>
           <span class="message-time">${formatTime(msg.timestamp)}</span>
         </div>
         <div class="message-bubble">${escapeHtml(msg.text)}</div>
