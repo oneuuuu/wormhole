@@ -2,7 +2,7 @@
  * Side Panel JavaScript - Chat UI logic
  */
 
-import { formatTime, getDisplayUrl } from '../lib/utils.js';
+import { formatTime, getDisplayUrl, roomIdToUrl } from '../lib/utils.js';
 
 // ============================================================================
 // DOM Elements
@@ -57,23 +57,32 @@ async function init() {
     }
 
     // Notify service worker that side panel is open
-    const response = await chrome.runtime.sendMessage({
+    await chrome.runtime.sendMessage({
         type: 'SIDE_PANEL_OPENED',
         tabId: currentTab.id
     });
 
-    if (response?.user) {
-        currentUser = response.user;
-        addUser(currentUser, true);
-    }
+    // Get current state from offscreen document as the source of truth
+    const status = await chrome.runtime.sendMessage({ type: 'GET_STATUS' });
+    console.log('[SidePanel] Current status:', status);
 
-    // Get initial state
-    const state = await chrome.runtime.sendMessage({ type: 'GET_STATE' });
-    if (state?.url) {
-        elements.roomUrl.textContent = getDisplayUrl(state.url);
-    }
-    if (state?.user) {
-        currentUser = state.user;
+    if (status?.isConnected) {
+        currentUser = status.user;
+        elements.roomUrl.textContent = getDisplayUrl(roomIdToUrl(status.roomId));
+        updateConnectionStatus(true);
+
+        // Sync user list
+        users.clear();
+        addUser(currentUser, true);
+        if (status.users) {
+            status.users.forEach(u => addUser(u));
+        }
+    } else {
+        // Fallback to service worker state to show "Connecting..." if join is in progress
+        const state = await chrome.runtime.sendMessage({ type: 'GET_STATE' });
+        if (state?.url) {
+            elements.roomUrl.textContent = getDisplayUrl(state.url);
+        }
     }
 
     console.log('[SidePanel] Initialized for tab:', currentTab.id);
@@ -176,8 +185,10 @@ function setupMessageListener() {
 function handleRoomJoined(data) {
     console.log('[SidePanel] Joined room:', data.roomId);
 
-    elements.roomUrl.textContent = getDisplayUrl(data.roomId);
+    // Update room URL
+    elements.roomUrl.textContent = getDisplayUrl(roomIdToUrl(data.roomId));
     updateConnectionStatus(true);
+    addSystemMessage(`Joined room: ${getDisplayUrl(roomIdToUrl(data.roomId))}`);
 
     // Add self to user list
     if (data.user) {
@@ -297,17 +308,17 @@ function addSystemMessage(text) {
 }
 
 function renderMessages() {
-    // Hide empty state if there are messages
+    // Always clear existing messages first
+    const existingMessages = elements.chatMessages.querySelectorAll('.message, .system-message');
+    existingMessages.forEach(el => el.remove());
+
+    // Hide/show empty state
     if (messages.length > 0) {
         elements.emptyState.classList.add('hidden');
     } else {
         elements.emptyState.classList.remove('hidden');
         return;
     }
-
-    // Clear existing messages (except empty state)
-    const existingMessages = elements.chatMessages.querySelectorAll('.message, .system-message');
-    existingMessages.forEach(el => el.remove());
 
     // Render messages
     for (const msg of messages) {

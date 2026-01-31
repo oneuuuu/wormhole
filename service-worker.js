@@ -23,6 +23,32 @@ let sidePanelOpen = false;
 // User info
 let userInfo = null;
 
+/**
+ * Persist state to session storage (MV3)
+ */
+async function saveSessionState() {
+    await chrome.storage.session.set({
+        currentTabId,
+        currentUrl,
+        currentRoomId,
+        sidePanelOpen
+    });
+}
+
+/**
+ * Load state from session storage
+ */
+async function loadSessionState() {
+    const session = await chrome.storage.session.get([
+        'currentTabId', 'currentUrl', 'currentRoomId', 'sidePanelOpen'
+    ]);
+    currentTabId = session.currentTabId || null;
+    currentUrl = session.currentUrl || null;
+    currentRoomId = session.currentRoomId || null;
+    sidePanelOpen = !!session.sidePanelOpen;
+    console.log('[SW] Session state loaded:', { sidePanelOpen, currentRoomId });
+}
+
 // ============================================================================
 // Offscreen Document Management
 // ============================================================================
@@ -125,6 +151,7 @@ async function joinRoomForTab(tabId, url) {
     currentTabId = tabId;
     currentUrl = url;
     currentRoomId = roomId;
+    await saveSessionState();
 
     // Ensure user is loaded
     if (!userInfo) {
@@ -155,6 +182,7 @@ async function leaveCurrentRoom() {
     }
 
     currentRoomId = null;
+    await saveSessionState();
 }
 
 // ============================================================================
@@ -194,10 +222,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function handleContentScriptMessage(message, tabId, sendResponse) {
     switch (message.type) {
         case 'URL_CHANGED':
-            // Only act if side panel is open for this tab
-            if (sidePanelOpen && tabId === currentTabId) {
-                joinRoomForTab(tabId, message.url);
-            }
+            // Only act if side panel is actually open
+            chrome.runtime.getContexts({ contextTypes: ['SIDE_PANEL'] }).then(contexts => {
+                if (contexts.length > 0) {
+                    chrome.tabs.get(tabId).then(tab => {
+                        if (tab.active) {
+                            joinRoomForTab(tabId, message.url);
+                        }
+                    });
+                }
+            });
             sendResponse({ received: true });
             break;
     }
@@ -216,6 +250,7 @@ function handleExtensionMessage(message, sendResponse) {
         case 'SIDE_PANEL_CLOSED':
             sidePanelOpen = false;
             leaveCurrentRoom();
+            saveSessionState();
             sendResponse({ success: true });
             break;
 
@@ -316,14 +351,17 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 chrome.runtime.onInstalled.addListener(async (details) => {
     console.log('[SW] Extension installed:', details.reason);
-
-    // Initialize user on install
     await loadUserInfo();
 });
 
 chrome.runtime.onStartup.addListener(async () => {
     console.log('[SW] Browser started');
     await loadUserInfo();
+    await loadSessionState();
 });
+
+// Load state immediately when service worker starts
+loadUserInfo();
+loadSessionState();
 
 console.log('[SW] Service worker loaded');

@@ -49,7 +49,7 @@ let userRef = null;
 let signalUnsubscribe = null;
 let usersUnsubscribe = null;
 
-// Peer connections: peerId -> { pc: RTCPeerConnection, dc: RTCDataChannel, retryCount: number }
+// Peer connections: peerId -> { pc: RTCPeerConnection, dc: RTCDataChannel, retryCount: number, queue: Promise }
 const peers = new Map();
 
 // Users in room: odId -> user info
@@ -238,7 +238,22 @@ function listenForSignals(roomId) {
 
         console.log(`[Offscreen] Signal received: ${signal.type} from ${signal.from}`);
 
-        await handleSignal(signal);
+        // Get or create queue for this peer to ensure sequential processing
+        let peerData = peers.get(signal.from);
+        if (!peerData && signal.type === 'offer') {
+            // We'll create the basic structure so we have a queue
+            peerData = { pc: null, dc: null, retryCount: 0, queue: Promise.resolve() };
+            peers.set(signal.from, peerData);
+        }
+
+        if (peerData) {
+            // Queue the signal handling
+            peerData.queue = peerData.queue.then(() => handleSignal(signal)).catch(err => {
+                console.error(`[Offscreen] Signal queue error for ${signal.from}:`, err);
+            });
+        } else {
+            console.warn(`[Offscreen] Ignoring signal ${signal.type} from unknown peer ${signal.from}`);
+        }
 
         // Clean up processed signal
         remove(ref(db, `rooms/${roomId}/signals/${signalId}`));
@@ -278,7 +293,7 @@ async function createPeerConnection(peerId) {
     console.log(`[Offscreen] Creating connection to ${peerId} (initiator: ${isInitiator})`);
 
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    const peerData = { pc, dc: null, retryCount: 0, isInitiator };
+    const peerData = { pc, dc: null, retryCount: 0, isInitiator, queue: Promise.resolve() };
     peers.set(peerId, peerData);
 
     // Handle ICE candidates
@@ -346,6 +361,9 @@ function setupDataChannel(peerId, channel) {
 
     channel.onerror = (event) => {
         const error = event.error;
+        // Ignore "User-Initiated Abort" as it happens during intentional close
+        if (error?.message === "User-Initiated Abort, reason=Close called") return;
+
         console.error(`[Offscreen] Data channel error with ${peerId}:`, {
             message: error?.message || 'Unknown error',
             errorDetail: error?.errorDetail,
@@ -370,10 +388,10 @@ async function handleSignal(signal) {
 
     let peerData = peers.get(from);
 
-    // If offer from unknown peer, create connection
-    if (!peerData && type === 'offer') {
+    // If offer from unknown peer or PC not initialized, create connection
+    if ((!peerData || !peerData.pc) && type === 'offer') {
         const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-        peerData = { pc, dc: null, retryCount: 0, isInitiator: false };
+        peerData = { pc, dc: null, retryCount: 0, isInitiator: false, queue: Promise.resolve() };
         peers.set(from, peerData);
 
         pc.onicecandidate = (event) => {
@@ -411,34 +429,53 @@ async function handleSignal(signal) {
     try {
         switch (type) {
             case 'offer':
-                // Only accept offer if we're stable or have-local-offer (and need to rollback)
-                if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-local-offer') {
-                    console.log(`[Offscreen] Ignoring offer, state is ${pc.signalingState}`);
-                    return;
+                const polite = currentUser.odId < from;
+                const offerCollision = pc.signalingState !== 'stable' && pc.signalingState === 'have-local-offer';
+
+                if (offerCollision) {
+                    if (!polite) {
+                        console.log(`[Offscreen] Ignoring offer collision from ${from} (I am impolite)`);
+                        return;
+                    }
+                    console.log(`[Offscreen] Rolling back for offer collision from ${from} (I am polite)`);
+                    await Promise.all([
+                        pc.setLocalDescription({ type: 'rollback' }),
+                        pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
+                    ]);
+                } else {
+                    await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
                 }
-                await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
                 sendSignal(from, 'answer', { sdp: pc.localDescription.toJSON() });
                 break;
 
             case 'answer':
-                // Only accept answer if we're waiting for one
                 if (pc.signalingState !== 'have-local-offer') {
-                    console.log(`[Offscreen] Ignoring answer, state is ${pc.signalingState}`);
+                    console.log(`[Offscreen] Ignoring answer from ${from}, state is ${pc.signalingState}`);
                     return;
                 }
                 await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
                 break;
 
             case 'ice-candidate':
-                if (pc.remoteDescription) {
-                    await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                try {
+                    if (data.candidate && pc.remoteDescription) {
+                        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    }
+                } catch (e) {
+                    console.warn(`[Offscreen] Error adding ICE candidate from ${from}:`, e.message);
                 }
                 break;
         }
     } catch (error) {
-        console.error(`[Offscreen] Error handling ${type} signal:`, error);
+        console.error(`[Offscreen] Error handling ${type} signal from ${from}:`, {
+            name: error.name,
+            message: error.message,
+            state: pc.signalingState,
+            error
+        });
     }
 }
 
@@ -553,11 +590,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             break;
 
         case 'GET_STATUS':
+            const userList = Array.from(roomUsers.entries()).map(([odId, data]) => ({
+                odId,
+                ...data,
+                state: peers.get(odId)?.pc?.connectionState || 'new'
+            }));
+
             sendResponse({
                 roomId: currentRoomId,
                 user: currentUser,
-                userCount: roomUsers.size + 1,
-                peerCount: peers.size
+                users: userList,
+                isConnected: !!currentRoomId
             });
             break;
 
