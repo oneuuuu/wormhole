@@ -15,6 +15,7 @@ import {
     push,
     onChildAdded,
     onChildRemoved,
+    onChildChanged,
     off,
     remove,
     get,
@@ -142,6 +143,24 @@ async function joinRoom(roomId, user) {
     }
 }
 
+async function handleUserUpdate(updates) {
+    if (!updates) return;
+
+    // Merge updates with current state to ensure odId is preserved
+    currentUser = { ...currentUser, ...updates };
+
+    console.log('[Offscreen] Local user updated:', currentUser.nickname);
+
+    if (currentRoomId && userRef && currentUser.odId) {
+        await set(userRef, {
+            odId: currentUser.odId,
+            nickname: currentUser.nickname,
+            email: currentUser.email || '',
+            timestamp: serverTimestamp()
+        });
+    }
+}
+
 async function leaveRoom() {
     if (!currentRoomId) return;
 
@@ -223,9 +242,28 @@ function listenForUsers(roomId) {
         });
     });
 
+    // Handle user data change (e.g. nickname)
+    const onChange = onChildChanged(usersRef, (snapshot) => {
+        const userData = snapshot.val();
+        const odId = snapshot.key;
+
+        // Skip self
+        if (odId === currentUser.odId) return;
+
+        console.log(`[Offscreen] User updated: ${userData.nickname}`);
+        roomUsers.set(odId, userData);
+
+        // Notify service worker -> side panel
+        sendToServiceWorker({
+            type: 'USER_JOINED', // Side panel handles USER_JOINED as "upsert"
+            user: { odId, ...userData }
+        });
+    });
+
     usersUnsubscribe = () => {
         off(usersRef, 'child_added', onJoin);
         off(usersRef, 'child_removed', onLeave);
+        off(usersRef, 'child_changed', onChange);
     };
 }
 
@@ -607,6 +645,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 isConnected: !!currentRoomId
             });
             break;
+
+        case 'UPDATE_USER':
+            handleUserUpdate(message.user).then(() => {
+                sendResponse({ success: true });
+            });
+            return true;
 
         case 'PING':
             sendResponse({ pong: true });

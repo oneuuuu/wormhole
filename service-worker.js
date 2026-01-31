@@ -312,6 +312,12 @@ async function updateUserInfo(updates) {
     userInfo = { ...userInfo, ...updates };
     await chrome.storage.sync.set(userInfo);
     console.log('[SW] Updated user:', userInfo.nickname);
+
+    // Broadcast update to all components (Offscreen to update Firebase, Side Panel to update UI)
+    broadcastToExtension({
+        type: 'UPDATE_USER',
+        user: userInfo
+    });
 }
 
 function broadcastToExtension(message) {

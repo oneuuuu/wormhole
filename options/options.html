@@ -13,32 +13,44 @@
         <header class="header">
             <div class="logo">
                 <span class="logo-icon">🌀</span>
-                <h1>Wormhole Settings</h1>
+                <h1 data-i18n="settings">Wormhole Settings</h1>
             </div>
-            <p class="subtitle">Configure your profile for chat</p>
+            <p class="subtitle" data-i18n="settingsSubtitle">Configure your profile for chat</p>
         </header>
 
         <main class="main">
             <section class="section">
-                <h2>Profile</h2>
+                <h2 data-i18n="profile">Profile</h2>
 
                 <div class="form-group">
-                    <label for="nickname">Nickname</label>
+                    <label for="nickname" data-i18n="nickname">Nickname</label>
                     <input type="text" id="nickname" placeholder="Enter your nickname" maxlength="30">
-                    <p class="hint">This is how others will see you in chat</p>
+                    <p class="hint" data-i18n="nicknameHint">This is how others will see you in chat</p>
                 </div>
 
                 <div class="form-group">
-                    <label for="email">Email (optional)</label>
+                    <label for="email" data-i18n="emailOptional">Email (optional)</label>
                     <input type="email" id="email" placeholder="your@email.com">
-                    <p class="hint">Displayed to other users if provided</p>
+                    <p class="hint" data-i18n="emailHint">Displayed to other users if provided</p>
                 </div>
             </section>
 
             <section class="section">
-                <h2>Your ID</h2>
+                <h2 data-i18n="language">Language</h2>
+                <div class="form-group">
+                    <select id="language">
+                        <option value="en">English</option>
+                        <option value="zh">简体中文</option>
+                        <option value="es">Español</option>
+                        <option value="ja">日本語</option>
+                    </select>
+                </div>
+            </section>
+
+            <section class="section">
+                <h2 data-i18n="userId">Your ID</h2>
                 <div class="info-box">
-                    <span class="label">User ID:</span>
+                    <span class="label" data-i18n="userId">User ID:</span>
                     <code id="userId">Loading...</code>
                     <button id="copyIdBtn" class="copy-btn" title="Copy ID">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -48,11 +60,11 @@
                         </svg>
                     </button>
                 </div>
-                <p class="hint">Your unique identifier (generated automatically)</p>
+                <p class="hint" data-i18n="userIdHint">Your unique identifier (generated automatically)</p>
             </section>
 
             <div class="actions">
-                <button id="saveBtn" class="btn btn-primary">Save Changes</button>
+                <button id="saveBtn" class="btn btn-primary" data-i18n="saveChanges">Save Changes</button>
             </div>
 
             <div id="toast" class="toast hidden">
@@ -62,7 +74,7 @@
 
         <footer class="footer">
             <p>Wormhole v1.0.0</p>
-            <p>WebRTC-powered chat for the web</p>
+            <p data-i18n="webrtcPowered">WebRTC-powered chat for the web</p>
         </footer>
     </div>
 

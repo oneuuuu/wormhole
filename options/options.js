@@ -3,6 +3,7 @@
  */
 
 import { generateUserId, generateNickname } from '../lib/utils.js';
+import { t } from '../lib/i18n.js';
 
 // DOM Elements
 const elements = {
@@ -10,9 +11,11 @@ const elements = {
     email: document.getElementById('email'),
     odId: document.getElementById('userId'),
     copyIdBtn: document.getElementById('copyIdBtn'),
+    language: document.getElementById('language'),
     saveBtn: document.getElementById('saveBtn'),
     toast: document.getElementById('toast'),
-    toastMessage: document.getElementById('toastMessage')
+    toastMessage: document.getElementById('toastMessage'),
+    subtitle: document.querySelector('.subtitle')
 };
 
 // ============================================================================
@@ -22,10 +25,11 @@ const elements = {
 async function init() {
     await loadSettings();
     setupEventListeners();
+    translatePage();
 }
 
 async function loadSettings() {
-    const stored = await chrome.storage.sync.get(['odId', 'nickname', 'email']);
+    const stored = await chrome.storage.sync.get(['odId', 'nickname', 'email', 'language']);
 
     if (!stored.odId) {
         // First time - generate new user
@@ -41,6 +45,7 @@ async function loadSettings() {
     elements.odId.textContent = stored.odId || 'N/A';
     elements.nickname.value = stored.nickname || '';
     elements.email.value = stored.email || '';
+    elements.language.value = stored.language || 'en';
 }
 
 // ============================================================================
@@ -56,7 +61,7 @@ function setupEventListeners() {
     elements.copyIdBtn.addEventListener('click', async () => {
         const odId = elements.odId.textContent;
         await navigator.clipboard.writeText(odId);
-        showToast('ID copied to clipboard!');
+        showToast(t('idCopied', elements.language.value));
     });
 
     // Save on Enter in inputs
@@ -76,33 +81,49 @@ function setupEventListeners() {
 async function saveSettings() {
     const nickname = elements.nickname.value.trim();
     const email = elements.email.value.trim();
+    const language = elements.language.value;
+    const currentLang = language;
 
     if (!nickname) {
-        showToast('Please enter a nickname', true);
+        showToast(t('pleaseEnterNickname', language), true);
         elements.nickname.focus();
         return;
     }
 
     // Validate email if provided
     if (email && !isValidEmail(email)) {
-        showToast('Please enter a valid email', true);
+        showToast(t('pleaseEnterValidEmail', language), true);
         elements.email.focus();
         return;
     }
 
-    await chrome.storage.sync.set({ nickname, email });
+    await chrome.storage.sync.set({ nickname, email, language });
+    translatePage();
 
     // Notify service worker of update
+    const odId = elements.odId.textContent;
     chrome.runtime.sendMessage({
         type: 'UPDATE_USER',
-        user: { nickname, email }
+        user: { odId, nickname, email, language }
     });
 
-    showToast('Settings saved!');
+    showToast(t('settingsSaved', language));
 }
 
 function isValidEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function translatePage() {
+    const lang = elements.language.value || 'en';
+
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        el.textContent = t(key, lang);
+    });
+
+    // Update placeholders
+    elements.nickname.placeholder = t('nickname', lang);
 }
 
 // ============================================================================

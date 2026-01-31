@@ -3,6 +3,7 @@
  */
 
 import { formatTime, getDisplayUrl, roomIdToUrl } from '../lib/utils.js';
+import { t } from '../lib/i18n.js';
 
 // ============================================================================
 // DOM Elements
@@ -35,6 +36,7 @@ let users = new Map(); // odId -> user info
 let messages = [];
 let seenMessageIds = new Set(); // Track seen messages to prevent duplicates
 let isConnected = false;
+let currentLanguage = 'en';
 
 // ============================================================================
 // Initialization
@@ -55,6 +57,11 @@ async function init() {
         showError('No active tab found');
         return;
     }
+
+    // Load language and translate page
+    const stored = await chrome.storage.sync.get(['language']);
+    currentLanguage = stored.language || 'en';
+    translatePage();
 
     // Notify service worker that side panel is open
     await chrome.runtime.sendMessage({
@@ -145,7 +152,7 @@ function setupMessageListener() {
                 break;
 
             case 'ROOM_FULL':
-                showModal('🚫', 'Room Full', `This room has reached its limit of ${message.userCount} users. Try another page.`);
+                showModal('🚫', t('roomFull', currentLanguage), t('roomFullMessage', currentLanguage, { count: message.userCount }));
                 break;
 
             case 'USER_JOINED':
@@ -172,6 +179,10 @@ function setupMessageListener() {
             case 'ERROR':
                 showError(message.message);
                 break;
+
+            case 'UPDATE_USER':
+                handleUserUpdate(message.user);
+                break;
         }
 
         sendResponse({ received: true });
@@ -188,7 +199,7 @@ function handleRoomJoined(data) {
     // Update room URL
     elements.roomUrl.textContent = getDisplayUrl(roomIdToUrl(data.roomId));
     updateConnectionStatus(true);
-    addSystemMessage(`Joined room: ${getDisplayUrl(roomIdToUrl(data.roomId))}`);
+    addSystemMessage(`${t('joinedRoom', currentLanguage)}: ${getDisplayUrl(roomIdToUrl(data.roomId))}`);
 
     // Add self to user list
     if (data.user) {
@@ -206,6 +217,27 @@ function handleRoomLeft() {
     renderUserList();
     renderMessages();
     updateConnectionStatus(false);
+}
+
+function handleUserUpdate(updates) {
+    if (!updates) return;
+
+    console.log('[SidePanel] Handling user update:', updates.nickname);
+
+    // Merge updates with current state
+    const newUser = { ...currentUser, ...updates };
+
+    // Update language if changed
+    if (newUser.language && newUser.language !== currentLanguage) {
+        currentLanguage = newUser.language;
+        translatePage();
+    }
+
+    // Update self in user list
+    currentUser = newUser;
+    if (currentUser && currentUser.odId) {
+        addUser(currentUser, true);
+    }
 }
 
 // ============================================================================
@@ -256,10 +288,22 @@ function renderUserList() {
         }
         userEl.innerHTML = `
       <div class="user-avatar">${(user.nickname || 'U').charAt(0).toUpperCase()}</div>
-      <span class="user-name">${escapeHtml(user.nickname)}${user.isSelf ? ' (you)' : ''}</span>
+      <span class="user-name">${escapeHtml(user.nickname)}${user.isSelf ? ` (${t('you', currentLanguage)})` : ''}</span>
       <span class="user-status"></span>
     `;
         elements.userList.appendChild(userEl);
+    }
+}
+
+function translatePage() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        el.textContent = t(key, currentLanguage);
+    });
+
+    // Update placeholders
+    if (elements.messageInput) {
+        elements.messageInput.placeholder = t('typeMessage', currentLanguage);
     }
 }
 
@@ -373,13 +417,17 @@ function updateConnectionStatus(connected) {
     isConnected = connected;
 
     elements.statusBar.className = `status-bar ${connected ? 'status-connected' : 'status-connecting'}`;
-    elements.statusText.textContent = connected ? 'Connected' : 'Connecting...';
+    elements.statusText.textContent = connected ? t('connected', currentLanguage) : t('connecting', currentLanguage);
 
     elements.sendBtn.disabled = !connected || elements.messageInput.value.trim().length === 0;
+
+    if (connected) {
+        elements.roomUrl.removeAttribute('data-i18n');
+    }
 }
 
 function showError(message) {
-    showModal('⚠️', 'Error', message);
+    showModal('⚠️', t('error', currentLanguage), message);
     updateConnectionStatus(false);
 }
 
