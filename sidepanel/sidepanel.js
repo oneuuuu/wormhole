@@ -220,8 +220,19 @@ function addUser(user, isSelf = false) {
 }
 
 function removeUser(odId) {
-    users.delete(odId);
-    renderUserList();
+    if (!odId) return;
+
+    // Don't remove self unless explicitly leaving room
+    if (currentUser && odId === currentUser.odId) {
+        console.log('[SidePanel] Skipping removeUser for self');
+        return;
+    }
+
+    console.log('[SidePanel] Removing user:', odId);
+    if (users.has(odId)) {
+        users.delete(odId);
+        renderUserList();
+    }
 }
 
 function renderUserList() {
@@ -232,7 +243,9 @@ function renderUserList() {
     const sortedUsers = Array.from(users.values()).sort((a, b) => {
         if (a.isSelf) return -1;
         if (b.isSelf) return 1;
-        return a.nickname.localeCompare(b.nickname);
+        const nameA = a.nickname || 'Unknown';
+        const nameB = b.nickname || 'Unknown';
+        return nameA.localeCompare(nameB);
     });
 
     for (const user of sortedUsers) {

@@ -207,8 +207,11 @@ function listenForUsers(roomId) {
     // Handle user leave
     const onLeave = onChildRemoved(usersRef, (snapshot) => {
         const odId = snapshot.key;
-        const userData = roomUsers.get(odId);
 
+        // Skip self (though we shouldn't get this if we unsub correctly)
+        if (odId === currentUser?.odId) return;
+
+        const userData = roomUsers.get(odId);
         console.log(`[Offscreen] User left: ${userData?.nickname || odId}`);
 
         roomUsers.delete(odId);
