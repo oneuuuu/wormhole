@@ -13,6 +13,31 @@ Wormhole is built using **Manifest V3** and leverages several modern Chrome APIs
 3.  **Side Panel UI (`sidepanel/`):** The user interface. It is a "thin client" that reflects the state of the Offscreen Document. It sends user input (messages) to the background and renders incoming events (new messages, user joins).
 4.  **Content Script (`content-script.js`):** Injected into every webpage to detect URL changes. It is specially designed to handle Single Page Applications (SPAs) by overriding `pushState`/`replaceState`.
 
+## Component Communication
+
+The following diagram illustrates how the different components interact through Chrome's messaging system and direct WebRTC channels:
+
+```mermaid
+sequenceDiagram
+    participant CS as Content Script
+    participant SW as Service Worker
+    participant OD as Offscreen Document
+    participant SP as Side Panel
+    participant P as Remote Peer
+
+    CS->>SW: URL_CHANGED (location.href)
+    SW->>OD: JOIN_ROOM (new RoomID)
+    OD->>OD: Initialize Firebase & WebRTC
+    
+    SP->>SW: SIDE_PANEL_OPENED
+    SP->>OD: GET_STATUS (current state)
+    OD-->>SP: Full State Snapshot (Users, Connectivity)
+    
+    SP->>OD: SEND_MESSAGE (text)
+    OD->>P: WebRTC DataChannel (Encrypted P2P)
+    OD->>SP: CHAT_MESSAGE (Echo for UI)
+```
+
 ## WebRTC Implementation
 
 Wormhole uses a **Mesh Topology**. Every user in a room connects directly to every other user.
@@ -25,6 +50,21 @@ Wormhole uses a **Mesh Topology**. Every user in a room connects directly to eve
 ### Data Channels
 - Text messages are sent over `RTCDataChannel` for low-latency, peer-to-peer communication.
 - Each message is assigned a unique ID for deduplication in the UI.
+
+## Message Data Flow (Sending)
+
+When a user sends a message, it follows this path from input to delivery:
+
+```mermaid
+graph TD
+    A[User Input in Side Panel] -->|chrome.runtime.sendMessage| B(Offscreen Document)
+    B --> C{Broadcast Logic}
+    C -->|Loop Peers| D[peerData.dc.send]
+    D -->|WebRTC| E(Remote Peers)
+    C -->|Echo| F[sendToServiceWorker]
+    F -->|Internal Broadcast| G(Side Panel UI)
+    G --> H[Render Message Bubble]
+```
 
 ## Data Persistence
 
