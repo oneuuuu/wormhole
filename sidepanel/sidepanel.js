@@ -312,6 +312,9 @@ function translatePage() {
     if (elements.messageInput) {
         elements.messageInput.placeholder = t('typeMessage', currentLanguage);
     }
+
+    // Re-apply connection status to update translated 'Connected' text
+    updateConnectionStatus(isConnected);
 }
 
 // ============================================================================
