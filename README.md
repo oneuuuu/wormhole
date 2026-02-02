@@ -2,6 +2,8 @@
 
 **Wormhole** is a Chrome extension that turns every webpage into a private, real-time chat room. Experience the web with others visiting the same page, all through a modern side panel interface.
 
+[**Download from Chrome Web Store**](https://chromewebstore.google.com/detail/wormhole/kiflgnlepagdnokhhbcjljcipcbfalcj)
+
 ![Wormhole Screenshot](screenshot.png)
 
 ## 🚀 Quick Start
