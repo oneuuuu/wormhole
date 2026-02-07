@@ -90,8 +90,8 @@ async function closeOffscreenDocument() {
 async function sendToOffscreen(message) {
     if (!await hasOffscreenDocument()) {
         await createOffscreenDocument();
-        // Give it a moment to initialize
-        await new Promise(r => setTimeout(r, 100));
+        // Give it a moment to initialize Firebase
+        await new Promise(r => setTimeout(r, 500));
     }
 
     return chrome.runtime.sendMessage(message);
