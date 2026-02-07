@@ -1,6 +1,6 @@
 {
   "name": "wormhole",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A Chrome extension that enables WebRTC-based text chat between users visiting the same webpage. Connect with others on any site through a sleek side panel interface.",
   "main": "content-script.js",
   "directories": {
